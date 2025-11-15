@@ -1,43 +1,30 @@
 #!/usr/bin/env python3
 """
-SVG Padding Remover Script
-This script removes extra padding from SVG files by calculating the actual bounding box
-of the content and adjusting the viewBox accordingly.
-
-Usage:
-    python svg_crop.py input.svg [output.svg]
-    python svg_crop.py --batch *.svg
-    python svg_crop.py --batch input_folder/ output_folder/
-
-Requirements:
-    pip install svgpathtools
+SVG Padding Remover - Correct Version
+Removes ALL padding from all sides and creates a perfectly centered, square output
 """
 
 import sys
-import os
-import argparse
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
 try:
-    from svgpathtools import svg2paths, wsvg
-    SVGPATHTOOLS_AVAILABLE = True
+    from svgpathtools import svg2paths
 except ImportError:
-    SVGPATHTOOLS_AVAILABLE = False
-    print("Warning: svgpathtools not installed. Install it with: pip install svgpathtools")
+    print("Error: svgpathtools not installed")
+    sys.exit(1)
 
 
-def calculate_bbox_with_svgpathtools(svg_file):
+def calculate_bbox(svg_file):
     """Calculate bounding box using svgpathtools library."""
-    if not SVGPATHTOOLS_AVAILABLE:
-        raise ImportError("svgpathtools is required. Install with: pip install svgpathtools")
-
-    paths, attributes = svg2paths(svg_file)
+    try:
+        paths, attributes = svg2paths(svg_file)
+    except Exception as e:
+        return None
 
     if not paths:
         return None
 
-    # Calculate bounding box for all paths
     xmin, xmax, ymin, ymax = None, None, None, None
 
     for path in paths:
@@ -53,211 +40,113 @@ def calculate_bbox_with_svgpathtools(svg_file):
                     xmax = max(xmax, px_max)
                     ymin = min(ymin, py_min)
                     ymax = max(ymax, py_max)
-        except Exception as e:
-            print(f"Warning: Could not calculate bbox for a path: {e}")
+        except Exception:
             continue
 
     if xmin is None:
         return None
 
-    width = xmax - xmin
-    height = ymax - ymin
-
     return {
         'xmin': xmin,
         'ymin': ymin,
-        'width': width,
-        'height': height,
         'xmax': xmax,
-        'ymax': ymax
+        'ymax': ymax,
+        'width': xmax - xmin,
+        'height': ymax - ymin
     }
 
 
-def parse_viewbox(viewbox_str):
-    """Parse viewBox attribute string."""
-    if not viewbox_str:
-        return None
-    parts = viewbox_str.strip().split()
-    if len(parts) != 4:
-        return None
-    return {
-        'x': float(parts[0]),
-        'y': float(parts[1]),
-        'width': float(parts[2]),
-        'height': float(parts[3])
-    }
-
-
-def crop_svg(input_file, output_file=None, padding=0):
+def crop_svg_correctly(input_file, output_file, padding=0):
     """
-    Remove extra padding from SVG file.
+    Remove ALL padding from SVG and create perfectly centered, square output.
 
     Args:
-        input_file: Path to input SVG file
-        output_file: Path to output SVG file (if None, will add _cropped suffix)
-        padding: Optional padding to keep around the content (in SVG units)
-
-    Returns:
-        Path to output file
+        input_file: Path to input SVG
+        output_file: Path to output SVG
+        padding: Optional padding to keep (default: 0)
     """
-    if output_file is None:
-        input_path = Path(input_file)
-        output_file = input_path.parent / f"{input_path.stem}_cropped{input_path.suffix}"
-
-    print(f"Processing: {input_file}")
-
     # Calculate bounding box
-    bbox = calculate_bbox_with_svgpathtools(input_file)
-
+    bbox = calculate_bbox(input_file)
     if bbox is None:
-        print(f"Error: Could not calculate bounding box for {input_file}")
-        return None
+        print(f"❌ Error: Could not calculate bounding box for {input_file}")
+        return False
 
-    print(f"Calculated bounding box: x={bbox['xmin']:.2f}, y={bbox['ymin']:.2f}, "
-          f"width={bbox['width']:.2f}, height={bbox['height']:.2f}")
-
-    # Register SVG namespace to avoid prefixes
+    # Register SVG namespace
     ET.register_namespace('', 'http://www.w3.org/2000/svg')
 
-    # Parse the SVG file
+    # Parse SVG
     tree = ET.parse(input_file)
     root = tree.getroot()
 
-    # Get current viewBox
-    current_viewbox = root.get('viewBox')
-    if current_viewbox:
-        old_vb = parse_viewbox(current_viewbox)
-        print(f"Old viewBox: x={old_vb['x']}, y={old_vb['y']}, "
-              f"width={old_vb['width']}, height={old_vb['height']}")
-
-    # Create new viewBox with padding
-    # Important: Make it square by using the larger dimension
+    # Calculate content dimensions with padding
     content_width = bbox['width'] + (2 * padding)
     content_height = bbox['height'] + (2 * padding)
 
-    # Use the larger dimension to make it square
+    # Make it square - use the larger dimension
     square_size = max(content_width, content_height)
 
-    # Get current viewBox to preserve bottom alignment
-    old_viewbox_dict = parse_viewbox(current_viewbox) if current_viewbox else None
+    # Center the content perfectly in the square
+    center_x = bbox['xmin'] + bbox['width'] / 2
+    center_y = bbox['ymin'] + bbox['height'] / 2
 
-    if old_viewbox_dict:
-        # Keep bottom fixed (Y bottom should remain the same)
-        # In normal coordinate system: bottom = y + height
-        old_bottom = old_viewbox_dict['y'] + old_viewbox_dict['height']
+    # Calculate new viewBox to center content
+    new_x = center_x - square_size / 2
+    new_y = center_y - square_size / 2
 
-        # New viewBox should end at the same bottom
-        new_y = old_bottom - square_size
-
-        # Center horizontally
-        center_x = bbox['xmin'] + bbox['width'] / 2
-        new_x = center_x - square_size / 2
-    else:
-        # Fallback: center the content
-        center_x = bbox['xmin'] + bbox['width'] / 2
-        center_y = bbox['ymin'] + bbox['height'] / 2
-        new_x = center_x - square_size / 2
-        new_y = center_y - square_size / 2
-
-    new_width = square_size
-    new_height = square_size
-
-    new_viewbox = f"{new_x} {new_y} {new_width} {new_height}"
+    # Set new viewBox
+    new_viewbox = f"{new_x} {new_y} {square_size} {square_size}"
     root.set('viewBox', new_viewbox)
 
-    print(f"New viewBox (square): x={new_x:.2f}, y={new_y:.2f}, "
-          f"width={new_width:.2f}, height={new_height:.2f}")
-
-    # Remove width and height attributes to make it responsive
+    # Remove fixed width/height
     if 'width' in root.attrib:
         del root.attrib['width']
     if 'height' in root.attrib:
         del root.attrib['height']
 
-    # Save the modified SVG
+    # Save
     tree.write(output_file, encoding='unicode', xml_declaration=True)
-    print(f"Saved cropped SVG to: {output_file}\n")
 
-    return output_file
-
-
-def process_batch(input_pattern, output_dir=None, padding=0):
-    """
-    Process multiple SVG files.
-
-    Args:
-        input_pattern: Glob pattern or directory path
-        output_dir: Output directory (if None, will use same directory with _cropped suffix)
-        padding: Optional padding to keep around the content
-    """
-    from glob import glob
-
-    input_path = Path(input_pattern)
-
-    # Handle directory input
-    if input_path.is_dir():
-        svg_files = list(input_path.glob('*.svg'))
-    else:
-        svg_files = [Path(f) for f in glob(str(input_pattern))]
-
-    if not svg_files:
-        print(f"No SVG files found matching: {input_pattern}")
-        return
-
-    print(f"Found {len(svg_files)} SVG files to process\n")
-
-    # Create output directory if specified
-    if output_dir:
-        output_path = Path(output_dir)
-        output_path.mkdir(parents=True, exist_ok=True)
-
-    # Process each file
-    for svg_file in svg_files:
-        try:
-            if output_dir:
-                output_file = Path(output_dir) / svg_file.name
-            else:
-                output_file = None
-
-            crop_svg(str(svg_file), str(output_file) if output_file else None, padding)
-        except Exception as e:
-            print(f"Error processing {svg_file}: {e}\n")
-            continue
+    return True
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description='Remove extra padding from SVG files by cropping to content bounding box',
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  %(prog)s icon.svg                          # Crop single file, output to icon_cropped.svg
-  %(prog)s icon.svg output.svg               # Crop single file with custom output name
-  %(prog)s icon.svg -p 10                    # Crop with 10 units of padding
-  %(prog)s --batch *.svg                     # Crop all SVG files in current directory
-  %(prog)s --batch icons/ output/            # Crop all SVGs from icons/ to output/
-  %(prog)s --batch icons/ output/ -p 5       # Crop with 5 units padding
-        """
-    )
+    import argparse
 
-    parser.add_argument('input', help='Input SVG file or pattern')
-    parser.add_argument('output', nargs='?', help='Output SVG file or directory (optional)')
-    parser.add_argument('--batch', '-b', action='store_true',
-                        help='Process multiple files (input can be glob pattern or directory)')
+    parser = argparse.ArgumentParser(description='Crop SVG correctly - remove all padding')
+    parser.add_argument('input', help='Input SVG file or directory')
+    parser.add_argument('output', help='Output SVG file or directory')
     parser.add_argument('--padding', '-p', type=float, default=0,
-                        help='Padding to keep around content (default: 0)')
+                        help='Padding to keep (default: 0)')
+    parser.add_argument('--batch', '-b', action='store_true',
+                        help='Process directory')
 
     args = parser.parse_args()
 
-    if not SVGPATHTOOLS_AVAILABLE:
-        print("\nError: This script requires svgpathtools library.")
-        print("Install it with: pip install svgpathtools\n")
-        sys.exit(1)
-
     if args.batch:
-        process_batch(args.input, args.output, args.padding)
+        input_dir = Path(args.input)
+        output_dir = Path(args.output)
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        svg_files = sorted(input_dir.glob('*.svg'))
+        print(f"Processing {len(svg_files)} icons...\n")
+
+        success_count = 0
+        for svg_file in svg_files:
+            output_file = output_dir / svg_file.name
+            print(f"Processing: {svg_file.name}...", end=' ')
+
+            if crop_svg_correctly(str(svg_file), str(output_file), args.padding):
+                print("✓")
+                success_count += 1
+            else:
+                print("✗")
+
+        print(f"\n✅ Successfully processed {success_count}/{len(svg_files)} icons")
     else:
-        crop_svg(args.input, args.output, args.padding)
+        if crop_svg_correctly(args.input, args.output, args.padding):
+            print(f"✅ Saved: {args.output}")
+        else:
+            print(f"❌ Failed to process {args.input}")
 
 
 if __name__ == '__main__':

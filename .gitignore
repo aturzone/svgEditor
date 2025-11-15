@@ -43,3 +43,7 @@ Thumbs.db
 __MACOSX/
 iconsax/
 iconsax.zip
+analyze_icons.py
+verify_fixed.py
+well_cropped_list.txt
+svg_crop_correct.py
