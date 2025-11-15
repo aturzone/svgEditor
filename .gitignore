@@ -48,3 +48,4 @@ verify_fixed.py
 well_cropped_list.txt
 svg_crop_correct.py
 detailed_analysis.py
+fix_icon_manual.py
