@@ -1,6 +1,6 @@
 # SVG Padding Remover / حذف‌کننده فضای خالی SVG
 
-[English](#english) | [فارسی](#persian)
+[English](#english) | [فارسی](#persian) | [📊 See Example](EXAMPLE.md)
 
 ---
 
