@@ -1,6 +1,7 @@
-# Cropped/processed SVG output files
+# Cropped/processed SVG output files (except examples)
 *_cropped.svg
 *_with_padding.svg
+!ic_activity_cropped.svg
 
 # Python
 __pycache__/
