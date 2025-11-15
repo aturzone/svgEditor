@@ -49,3 +49,6 @@ well_cropped_list.txt
 svg_crop_correct.py
 detailed_analysis.py
 fix_icon_manual.py
+fix_with_transform.py
+fix_icons_correctly.py
+check_current_icons.py
