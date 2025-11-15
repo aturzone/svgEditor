@@ -131,15 +131,41 @@ def crop_svg(input_file, output_file=None, padding=0):
               f"width={old_vb['width']}, height={old_vb['height']}")
 
     # Create new viewBox with padding
-    new_x = bbox['xmin'] - padding
-    new_y = bbox['ymin'] - padding
-    new_width = bbox['width'] + (2 * padding)
-    new_height = bbox['height'] + (2 * padding)
+    # Important: Make it square by using the larger dimension
+    content_width = bbox['width'] + (2 * padding)
+    content_height = bbox['height'] + (2 * padding)
+
+    # Use the larger dimension to make it square
+    square_size = max(content_width, content_height)
+
+    # Get current viewBox to preserve bottom alignment
+    old_viewbox_dict = parse_viewbox(current_viewbox) if current_viewbox else None
+
+    if old_viewbox_dict:
+        # Keep bottom fixed (Y bottom should remain the same)
+        # In normal coordinate system: bottom = y + height
+        old_bottom = old_viewbox_dict['y'] + old_viewbox_dict['height']
+
+        # New viewBox should end at the same bottom
+        new_y = old_bottom - square_size
+
+        # Center horizontally
+        center_x = bbox['xmin'] + bbox['width'] / 2
+        new_x = center_x - square_size / 2
+    else:
+        # Fallback: center the content
+        center_x = bbox['xmin'] + bbox['width'] / 2
+        center_y = bbox['ymin'] + bbox['height'] / 2
+        new_x = center_x - square_size / 2
+        new_y = center_y - square_size / 2
+
+    new_width = square_size
+    new_height = square_size
 
     new_viewbox = f"{new_x} {new_y} {new_width} {new_height}"
     root.set('viewBox', new_viewbox)
 
-    print(f"New viewBox: x={new_x:.2f}, y={new_y:.2f}, "
+    print(f"New viewBox (square): x={new_x:.2f}, y={new_y:.2f}, "
           f"width={new_width:.2f}, height={new_height:.2f}")
 
     # Remove width and height attributes to make it responsive
